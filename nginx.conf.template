@@ -1,0 +1,85 @@
+# vim: set ft=nginx :
+
+user      nginx;
+error_log /var/log/nginx/error.log warn;
+pid       /var/run/nginx.pid;
+
+load_module /usr/lib/nginx/modules/ndk_http_module.so;
+load_module /usr/lib/nginx/modules/ngx_http_mruby_module.so;
+
+worker_processes auto;
+
+events {
+  worker_connections 1024;
+  multi_accept on;
+  use epoll;
+}
+
+env AWS_REGION;
+env AWS_DEFAULT_REGION;
+env AWS_S3_ENDPOINT;
+env AWS_ACCESS_KEY_ID;
+env AWS_SECRET_ACCESS_KEY;
+env AWS_SECURITY_TOKEN;
+
+http {
+  include /etc/nginx/mime.types;
+  default_type text/html;
+  charset UTF-8;
+
+  server_tokens off;
+
+  sendfile on;
+  tcp_nopush on;
+  tcp_nodelay on;
+
+  # AWS ELB Recommended
+  keepalive_timeout 120;
+  keepalive_requests 100;
+
+  client_header_timeout 10;
+  client_body_timeout 10;
+  send_timeout 10;
+  reset_timedout_connection on;
+
+  open_file_cache max=100000 inactive=20s;
+  open_file_cache_valid 30s;
+  open_file_cache_min_uses 2;
+  open_file_cache_errors on;
+
+  resolver ${NGINX_RESOLVER};
+
+  upstream s3 {
+    server ${AWS_S3_ENDPOINT};
+    keepalive 64;
+  }
+
+  server {
+    listen ${NGINX_LISTEN_PORT};
+
+    location / {
+      set $s3_endpoint_domain_name "${AWS_S3_ENDPOINT}";
+      set $x_authorization "";
+      set $x_amz_content_sha256 "";
+      set $x_amz_security_token "";
+      set $x_amz_date "";
+
+      proxy_intercept_errors on;
+      proxy_socket_keepalive on;
+      proxy_pass_request_headers off;
+
+      proxy_http_version 1.1;
+      proxy_set_header Connection "";
+      proxy_set_header Host $s3_endpoint_domain_name;
+      proxy_set_header Authorization $x_authorization;
+      proxy_set_header x-amz-security-token $x_amz_security_token;
+      proxy_set_header x-amz-content-sha256 $x_amz_content_sha256;
+      proxy_set_header x-amz-date $x_amz_date;
+
+      mruby_enable_read_request_body on;
+      mruby_access_handler /etc/nginx/mruby_access_handler.mrb;
+
+      proxy_pass http://s3;
+    }
+  }
+}

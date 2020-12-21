@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  nginx-mruby-s3-proxy:
+    image: takumi/nginx-mruby:latest
+    hostname: nginx-mruby-s3-proxy
+    container_name: nginx-mruby-s3-proxy
+    cap_add:
+      - FOWNER
+      - CHOWN
+      - SETUID
+      - SETGID
+    cap_drop:
+      - ALL
+    networks:
+      - nginx-mruby-s3-proxy
+    ports:
+      - ${NGINX_LISTEN_PORT:-8080}:${NGINX_LISTEN_PORT:-8080}
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+      - ./mruby_access_handler.mrb:/etc/nginx/mruby_access_handler.mrb:ro
+    environment:
+      NGINX_ENVSUBST_TEMPLATE_DIR: /etc/nginx/templates
+      NGINX_ENVSUBST_TEMPLATE_SUFFIX: .template
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      NGINX_LISTEN_PORT: ${NGINX_LISTEN_PORT:-8080}
+      NGINX_RESOLVER: ${NGINX_RESOLVER:-127.0.0.11}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-ap-northeast-1}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT:-bucket.s3.ap-northeast-1.amazonaws.com}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-MINIO_ACCESS_KEY}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-MINIO_SECRET_KEY}
+      AWS_SECURITY_TOKEN: ${AWS_SECURITY_TOKEN:-}
+      TZ: Asia/Tokyo
+
+  s3:
+    image: minio/minio:latest
+    hostname: s3.ap-northeast-1.amazonaws.com
+    container_name: s3.ap-northeast-1.amazonaws.com
+    command: server --address :80 /export
+    networks:
+      nginx-mruby-s3-proxy:
+        aliases:
+          - s3.ap-northeast-1.amazonaws.com
+          - bucket.s3.ap-northeast-1.amazonaws.com
+    ports:
+      - 9000:80
+    environment:
+      MINIO_ACCESS_KEY: MINIO_ACCESS_KEY
+      MINIO_SECRET_KEY: MINIO_SECRET_KEY
+      MINIO_REGION_NAME: ap-northeast-1
+      MINIO_DOMAIN: s3.ap-northeast-1.amazonaws.com
+      TZ: Asia/Tokyo
+
+  s3-init:
+    image: minio/mc
+    hostname: s3-init
+    container_name: s3-init
+    depends_on:
+      - s3
+    networks:
+      - nginx-mruby-s3-proxy
+    entrypoint: >
+      /bin/sh -c "
+      until (mc config host add s3 http://s3 MINIO_ACCESS_KEY MINIO_SECRET_KEY) do sleep 1; done;
+      /usr/bin/mc mb s3/bucket;
+      /usr/bin/mc policy set upload s3/bucket;
+      /usr/bin/mc policy get s3/bucket;
+      exit 0;
+      "
+
+networks:
+  nginx-mruby-s3-proxy:
+    name: nginx-mruby-s3-proxy
