@@ -1,55 +1,49 @@
-#!/usr/bin/env ruby
+# frozen_string_literal: true
 
-region = ENV["AWS_REGION"] || ENV["AWS_DEFAULT_REGION"]
-endpoint = ENV["AWS_S3_ENDPOINT"]
-access_key = ENV["AWS_ACCESS_KEY_ID"]
-secret_key = ENV["AWS_SECRET_ACCESS_KEY"]
-security_token = ENV["AWS_SECURITY_TOKEN"]
+region = ENV['AWS_REGION'] || ENV['AWS_DEFAULT_REGION']
+endpoint = ENV['AWS_S3_ENDPOINT']
+access_key = ENV['AWS_ACCESS_KEY_ID']
+secret_key = ENV['AWS_SECRET_ACCESS_KEY']
+security_token = ENV['AWS_SECURITY_TOKEN']
 
 request = Nginx::Request.new
 method = request.method.upcase
 path = request.uri
 time = Time.now.utc
-if method.match(/^(?:PUT|POST)$/)
-  body = request.get_body
-else
-  body = ""
-end
+body = ''
+body = request.get_body if method.match(/^(?:PUT|POST)$/)
 
 sha256sum = Digest::SHA256.hexdigest(body)
-date = time.strftime("%Y%m%dT%H%M%SZ")
+date = time.strftime('%Y%m%dT%H%M%SZ')
 
-signed_headers = {
-  "host"                 => endpoint,
-  "x-amz-content-sha256" => sha256sum,
-  "x-amz-date"           => date,
-}
-if security_token != ""
-  signed_headers['x-amz-security-token'] = security_token
-end
+signed_headers = {}
+signed_headers['host'] = endpoint
+signed_headers['x-amz-security-token'] = security_token if security_token != ''
+signed_headers['x-amz-content-sha256'] = sha256sum
+signed_headers['x-amz-date'] = date
 signed_headers = signed_headers.sort.to_h
 
-Nginx.errlogger Nginx::LOG_INFO, "signed_headers: #{signed_headers.keys.join(";")}"
+Nginx.errlogger Nginx::LOG_INFO, "signed_headers: #{signed_headers.keys.join(';')}"
 
 canonical_request = []
 canonical_request.push(method)
 canonical_request.push(path)
-canonical_request.push("")
+canonical_request.push('')
 signed_headers.each do |k, v|
   canonical_request.push("#{k}:#{v}")
 end
-canonical_request.push("")
-canonical_request.push(signed_headers.keys.join(";"))
+canonical_request.push('')
+canonical_request.push(signed_headers.keys.join(';'))
 canonical_request.push(sha256sum)
 
 Nginx.errlogger Nginx::LOG_INFO, "canonical_request: #{canonical_request.join("\n")}"
 
-scope = [time.strftime("%Y%m%d"), region, "s3", "aws4_request"]
+scope = [time.strftime('%Y%m%d'), region, 's3', 'aws4_request']
 
 signature_v4_request = []
-signature_v4_request.push("AWS4-HMAC-SHA256")
+signature_v4_request.push('AWS4-HMAC-SHA256')
 signature_v4_request.push(date)
-signature_v4_request.push(scope.join("/"))
+signature_v4_request.push(scope.join('/'))
 signature_v4_request.push(Digest::SHA256.hexdigest(canonical_request.join("\n")))
 
 Nginx.errlogger Nginx::LOG_INFO, "signature_v4_request: #{signature_v4_request.join("\n")}"
@@ -61,16 +55,18 @@ end
 signature = Digest::HMAC.hexdigest(signature_v4_request.join("\n"), signing_key, Digest::SHA256)
 
 authorization = []
-authorization.push("AWS4-HMAC-SHA256 Credential=#{access_key}/#{scope.join("/")}")
-authorization.push("SignedHeaders=#{signed_headers.keys.join(";")}")
+authorization.push("AWS4-HMAC-SHA256 Credential=#{access_key}/#{scope.join('/')}")
+authorization.push("SignedHeaders=#{signed_headers.keys.join(';')}")
 authorization.push("Signature=#{signature}")
 
-Nginx.errlogger Nginx::LOG_INFO, "authorization: #{authorization.join(",")}"
+Nginx.errlogger Nginx::LOG_INFO, "authorization: #{authorization.join(',')}"
 
 request.var.s3_endpoint_domain_name = endpoint
-request.var.x_authorization = authorization.join(",")
-request.var.x_amz_security_token = security_token if security_token != ""
+request.var.x_authorization = authorization.join(',')
+request.var.x_amz_security_token = security_token if security_token != ''
 request.var.x_amz_content_sha256 = sha256sum
 request.var.x_amz_date = date
 
 Nginx.return Nginx::DECLINED
+
+# vim: set ft=ruby :
