@@ -59,7 +59,7 @@ http {
 
     location / {
       set $s3_endpoint_domain_name "${AWS_S3_ENDPOINT}";
-      set $x_authorization "";
+      set $authorization "";
       set $x_amz_content_sha256 "";
       set $x_amz_security_token "";
       set $x_amz_date "";
@@ -71,8 +71,9 @@ http {
 
       proxy_http_version 1.1;
       proxy_set_header Connection "";
+      proxy_set_header Authorization $authorization;
+      proxy_set_header Content-Type $content_type;
       proxy_set_header Host $s3_endpoint_domain_name;
-      proxy_set_header Authorization $x_authorization;
       proxy_set_header x-amz-security-token $x_amz_security_token;
       proxy_set_header x-amz-content-sha256 $x_amz_content_sha256;
       proxy_set_header x-amz-date $x_amz_date;
