@@ -16,13 +16,15 @@ body = request.get_body if method.match(/^(?:PUT|POST)$/)
 sha256sum = Digest::SHA256.hexdigest(body)
 date = time.strftime('%Y%m%dT%H%M%SZ')
 
-signed_headers = {}
-signed_headers['host'] = endpoint
-signed_headers['content-type'] = request.var.content_type if request.var.content_type != ''
-signed_headers['x-amz-security-token'] = security_token if security_token != ''
-signed_headers['x-amz-content-sha256'] = sha256sum
-signed_headers['x-amz-date'] = date
-signed_headers = signed_headers.sort.to_h
+signed_headers = {
+  'host'                 => endpoint.to_s.strip,
+  'content-type'         => (request.var.content_type.to_s.strip if request.var.content_type.to_s.strip != ''),
+  'x-real-ip'            => (request.var.proxy_protocol_addr.to_s.strip if request.var.proxy_protocol_addr.to_s.strip != ''),
+  'x-forwarded-for'      => (request.var.proxy_protocol_addr.to_s.strip if request.var.proxy_protocol_addr.to_s.strip != ''),
+  'x-amz-security-token' => (security_token.to_s.strip if security_token.to_s.strip != ''),
+  'x-amz-content-sha256' => sha256sum,
+  'x-amz-date'           => date,
+}.compact.sort.to_h
 
 Nginx.errlogger Nginx::LOG_INFO, "signed_headers: #{signed_headers.keys.join(';')}"
 
