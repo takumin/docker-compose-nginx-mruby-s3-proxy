@@ -63,7 +63,7 @@ authorization.push("Signature=#{signature}")
 Nginx.errlogger Nginx::LOG_INFO, "authorization: #{authorization.join(',')}"
 
 request.var.s3_endpoint_domain_name = endpoint
-request.var.x_authorization = authorization.join(',')
+request.var.authorization = authorization.join(',')
 request.var.x_amz_security_token = security_token if security_token != ''
 request.var.x_amz_content_sha256 = sha256sum
 request.var.x_amz_date = date
